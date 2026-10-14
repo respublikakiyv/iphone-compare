@@ -1,0 +1,22 @@
+services:
+  - type: worker
+    name: iphone-compare-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    numInstances: 1
+    disk:
+      name: iphone-catalog
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: SYNC_WORKER_KEY
+        sync: false
+      - key: MINIAPP_URL
+        value: https://iphone-price-miniapp.greydrake2.chatgpt.site
+      - key: ENABLE_MINIAPP
+        value: "1"
+      - key: DATA_DIR
+        value: /app/data
