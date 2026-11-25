@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ipeople-price-bot
+    runtime: node
+    region: frankfurt
+    plan: starter
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: node scripts/render-start.mjs
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    disk:
+      name: price-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: RENDER_STATE_PATH
+        value: /var/data
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: SYNC_WORKER_KEY
+        generateValue: true
+      - key: MOYSKLAD_TOKEN
+        sync: false
+      - key: MOYSKLAD_WEBHOOK_SECRET
+        sync: false
