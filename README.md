@@ -1,213 +1,126 @@
-# Текущий режим: ручное обновление без Mac
+# vinext-starter
 
-Mini App: https://iphone-price-miniapp.greydrake2.chatgpt.site
+A clean full-stack starter running on [vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and Drizzle support.
 
-Остановите Start.command на Mac и откройте Mini App в Telegram.
-Каталог и курс сохраняются отдельно на каждом устройстве. Во вкладке
-«Моя база» доступны «Обновить цены» и «Обновить весь каталог».
-Оставляйте приложение открытым до завершения. Уже проверенные карточки
-сохраняются сразу; остановка/закрытие не стирает последние цены.
+## Prerequisites
 
-Бот обслуживается вебхуком в опубликованном приложении. Сервер Sites получает
-страницы магазинов и разбирает HTML; устройство хранит результат. Render и
-GitHub Actions для этого режима не требуются. Отдельный платный сервис
-не создан. Действуют лимиты существующего хостинга и ограничения магазинов.
+- Node.js `>=22.13.0`
+- Portable: Windows, macOS, or Linux; no Bash required
+- Managed Linux: managed Linux runtime with Bash, `flock`, `curl`, `sha256sum`, and GNU `timeout`
+- Git is required only for publishing
 
-Исходники опубликованной веб-части хранятся в репозитории Site. Python-код,
-Dockerfile и render.yaml ниже сохранены как альтернативный вариант;
-их установка и запуск не нужны для текущего Mini App.
+## Sites Lifecycle
 
-Копирование: одно название телефона, затем строки «сайт $… …грн» и
-«ябко $… …грн» по установленному курсу. SKU, ссылки и даты в буфер не входят.
+The Sites initializer copies the shared starter and selects managed-linux only when `SITES_MANAGED_LINUX_CONTAINER=1`; otherwise it selects portable. It saves the selection only in ignored `.sites-runtime/execution-profile.json`. Both profiles copy/configure first, then use the plugin's separate `install-dependencies.mjs` step to measure installation independently. Edit source under `app/` and follow the Sites skill for installation, preview, builds, and publishing.
 
-Проверено: 26 тестов веб-части, TypeScript, сборка, реальные страницы обоих
-магазинов HTTP 200 и настройка Telegram webhook. Полный живой обход всего
-каталога и работа на физическом телефоне в этой проверке не подтверждены.
+Run `node <plugin-root>/scripts/configure-execution-profile.mjs` only when the profile is unknown for the current checkout and environment. Profile changes do not alter tracked source or require reinstalling otherwise-valid dependencies; restart an existing preview to use the new selection. Do not commit or upload `.sites-runtime/`.
 
-## Новые и Б/У iPhone
+This starter does not use `wrangler.jsonc`.
 
-В новых показываются только модели 17 и новее. Старые новые записи удаляются
-из сохранённого каталога при открытии обновлённого Mini App.
+`install:ci` runs `npm ci` once against the shared lockfile, disables parent-workspace discovery, and includes required dev/optional dependencies despite production/omit settings. Sharp defaults to prebuilt binaries unless explicitly configured otherwise. Do not overlap installers.
 
-Вкладка «Б/У iPhone» использует отдельный каталог iPeople. Выбора SIM нет;
-включаются только товары с подтверждённой физической SIM. Более ранние модели
-допустимы только в этой вкладке. Для первого наполнения нажмите
-«Загрузить каталог Б/У», затем используйте «Обновить цены Б/У».
-Обновление Б/У не обращается к Jabko и не изменяет цены новых телефонов.
+- **Portable:** Preserve host HOME, npm cache, registry, proxy, temporary paths, retry/concurrency settings, and lifecycle-script policy. Use `--prefer-offline --no-audit --no-fund`.
+- **Managed Linux:** Use the existing project-local HOME/cache/tmp setup and Linux install lock, tarball preflight, and timeout. Restore the image-seeded npm cache only when its lockfile hash matches; retain network fallback. Builds keep their existing timeout. These helpers are not invoked by the portable profile.
 
+`scripts/sites-env.mjs` preserves the caller's HOME, npm cache, proxy, XDG, and temporary-directory configuration while defaulting Wrangler and Miniflare state to the checkout. If npm reports an unwritable cache, select a writable path with `npm_config_cache` for that install. The `dev` and `start` scripts also keep Wrangler logs inside the checkout. Generated `.sites-runtime/` and `.wrangler/` directories are disposable and ignored by Git.
 
----
+On portable, `npm run dev` uses `vinext dev` with HMR, starting at port 5173. Vinext records the running server in ignored `.vinext/` state, rejects an ordinary duplicate launch, and recovers stale state after a stopped process; exactly simultaneous starts can race. Pass `--port <port>` or `--hostname <host>` after `npm run dev --` when needed; keep portable previews on loopback.
 
-# iPhone Compare — Telegram Mini App
+For browser QA on managed Linux, use `sites-preview start`. The project's dev script runs Vite and accepts the supervisor's `--host 0.0.0.0 --port 4173 --strictPort` arguments. The internal browser uses `http://terminal.local:4173/`; it is not a user-facing URL. The supervisor owns the preview lifecycle. The ignored local profile survives the supervisor's cleared process environment.
 
-Мини-приложение с интерфейсом в стиле Apple, светлой/тёмной темой и сохранённой базой iPeople.ua + Jabko.ua. Сравнение не обращается к магазинам.
+The portable profile simulates ChatGPT sign-in only for loopback development requests. Visit `/signin-with-chatgpt?return_to=/` to sign in as `local_seedy` (`seedy@sites.test`, display name `Seedy`) and `/signout-with-chatgpt?return_to=/` to sign out. The development cookie preserves that identity across server restarts. Mock auth is disabled in the managed-linux profile and is not included in production builds; hosted authentication remains dispatch-owned.
 
-## Что изменилось
+The Worker uses `vinext/server/fetch-handler`, including Vinext's config-aware image handling. After building, `npm start` runs that Worker locally through Wrangler on `127.0.0.1`, sharing `.wrangler/state` with dev preview and local D1 migrations; it does not deploy the site or simulate sign-in. Use the URL printed by the server. Pass `npm start -- --port <port>` to select a different built-preview port.
 
-- Курс USD/UAH сохраняется для пользователя. Меняется отдельной кнопкой $ в верхнем правом углу; на каждом сравнении не спрашивается.
-- Модели, память, SIM и цвета берутся из базы, а не из фиксированного списка кнопок.
-- «Обновить цены» проверяет только сохранённые URL товаров, цену и наличие. Не добавляет модели/варианты.
-- «Обновить весь каталог» обходит публичные страницы каталога и карточки, заново собирает подтверждённые модели/варианты с ценами.
-- Обновления выполняются в фоне. Можно продолжать сравнивать сохранённую выборку. Показываются состояние, прогресс и время обновления.
-- Сопоставление только новых Standard-товаров по модели, памяти, SIM и точному цвету. Б/у, refurbished, «Як Новий» и Ultra исключены, как в предыдущей проверенной версии.
-- При ошибке магазина сохраняются модели и последние подтверждённые цены с датой проверки. Товар с ошибкой не помечается как доступный. Для вариантов без подтверждённой цены показывается прочерк. Если характеристики варианта не подтверждены по HTML, он не включается.
+Local previews use Miniflare's placeholder `Request.cf` metadata without a network lookup. Set `CLOUDFLARE_CF_FETCH_ENABLED=true` to opt into fetching preview metadata; this setting does not change hosted request metadata.
 
-## Архитектура
+Local tool usage metrics are disabled by default. Set `WRANGLER_SEND_METRICS=true` to opt in.
 
-HTTPS-интерфейс и серверные API размещены в Sites. Облачная D1-база хранит опубликованный каталог, персональный курс и очередь обновлений. Frontend находится в отдельном исходном репозитории Site; это не HTML-заглушка.
+## Included Shape
 
-Python-парсеры обновляют каталог: sync_agent.py принимает задания через защищённый серверный endpoint, читает сайты и публикует новый снимок базы. SQLite в data/catalog.sqlite3 хранит локальное состояние обновлений. При первом запуске локальная база автоматически восстанавливается из включённого снимка evidence/catalog_snapshot.json, без повторного обхода сайтов. Снимок в облаке заменяется атомарно: пользователь не читает недописанную базу.
+- edit site code under `app/`
+- `app/chatgpt-auth.ts` provides optional dispatch-owned ChatGPT sign-in helpers
+- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
+- `vite.config.ts` simulates declared bindings for local development
+- `db/index.ts` reads the D1 binding from the Cloudflare Worker environment
+- `db/schema.ts` starts intentionally empty
+- `@cloudflare/workers-types` provides Worker types; `cloudflare-env.d.ts` declares optional `DB`/`BUCKET` bindings—update these declarations if binding names change
+- `examples/d1/` contains an optional D1 example surface
+- `drizzle.config.ts` supports local migration generation when needed
 
-Постоянная работа интерфейса и чтение сохранённых цен не зависят от Python-процесса. Для новых обновлений процесс sync_agent.py должен быть запущен на компьютере/сервере. Облачный интерфейс не запускает Python самостоятельно.
+## Workspace Auth Headers
 
-## Запуск Python-части
+Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
 
-Python 3.11+ (на Mac используйте современный Python с OpenSSL).
+The user ID is stable for the same user on the same Site and different across Sites. Use it as the durable user key; use email and name for display or contact purposes.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-chmod 600 .env
+SIWC-authenticated workspace sites may also receive `oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty `name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by `oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
+
+Treat the full name as optional and fall back to email when it is absent:
+
+```tsx
+import { headers } from "next/headers";
+
+export default async function Home() {
+  const requestHeaders = await headers();
+  const userId = requestHeaders.get("oai-authenticated-user-id");
+  const email = requestHeaders.get("oai-authenticated-user-email");
+  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
+  const fullName =
+    encodedFullName &&
+    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
+      "percent-encoded-utf-8"
+      ? decodeURIComponent(encodedFullName)
+      : null;
+
+  const displayName = fullName ?? email;
+  // ...
+}
 ```
 
-Заполните .env: TELEGRAM_BOT_TOKEN, HTTPS MINIAPP_URL, SYNC_WORKER_KEY. Этот ключ должен совпадать с секретом в окружении Site. SITES_SERVICE_TOKEN нужен только при закрытом режиме Site. Не публикуйте .env.
+## Optional Dispatch-Owned ChatGPT Sign-In
 
-```bash
-python sync_agent.py
+Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs optional or required ChatGPT sign-in:
+
+- Use `getChatGPTUser()` for optional signed-in UI.
+- Use the returned `userId` as the stable user key for user-owned records; do not use email as a durable identifier.
+- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send anonymous visitors through Sign in with ChatGPT.
+- In a Server Component, start sign-in with `<a href={chatGPTSignInPath(returnTo)} target="_top">`. The auth helper module is server-only; do not import it into a Client Component.
+- Do not use `fetch`, XHR, a client-side router, or a framework link that can prefetch the sign-in route. SIWC must start as a top-level navigation.
+- Never request the AuthAPI authorization endpoint directly. The dispatch-owned `/signin-with-chatgpt` route must start the SIWC flow.
+- Use `chatGPTSignOutPath(returnTo)` for browser sign-out links or actions.
+- Pass a same-origin relative `returnTo` path for the destination after sign-in or sign-out. The helper validates and safely encodes it.
+- Mark protected pages with `export const dynamic = "force-dynamic"` because they depend on per-request identity headers.
+
+Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the OAuth cookies, and identity header injection. Do not implement app routes for those reserved paths. Routes that do not import and call the helper remain anonymous-compatible.
+
+SIWC establishes identity only; it does not prove workspace membership. Use the Sites hosting platform's access policy controls for workspace-wide restrictions, or enforce explicit server-side membership or allowlist checks.
+
+Use SIWC for account pages, user-specific dashboards, saved records, and write actions tied to the current ChatGPT user. Leave public content anonymous.
+
+## Local D1 migrations
+
+For a D1-backed local preview, generate SQL with `npm run db:generate`. Build once through the Sites skill's build entrypoint (or `npm run build` for standalone use) to generate `dist/server/wrangler.json`, rebuilding if bindings change. From the project root, apply each pending migration in order:
+
+```sh
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_example.sql
 ```
 
-В другом окне терминала:
+Replace the filename with the pending migration and `DB` with your D1 binding name if different. Use `.wrangler/state`, not `.wrangler/state/v3`; Wrangler adds the versioned directories. Do not replay migrations already applied locally. This updates only the preview database; publishing applies production migrations separately.
 
-```bash
-python bot.py
-```
+## Diagnostic Commands
 
-ENABLE_MINIAPP=1 включает кнопку приложения в меню бота, /start и /app. Кнопка работает только в личном чате Telegram. ENABLE_MINIAPP=0 оставляет старый текстовый диалог как временный резервный режим; в нём ещё используется прежнее получение цен по запросу. Для требуемой работы из базы используйте Mini App.
+- `npm run install:ci`: perform the one locked dependency install
+- `npm run dev`: start the Vite/Vinext development server
+- `npm run build`: build the deployable Sites artifact
+- `npm run start`: preview the built Worker locally with D1/R2 support
+- `npm run db:generate`: generate Drizzle migrations after schema changes
 
-Полная ручная синхронизация без облака:
+When using the Sites plugin, follow its skill instructions for installation, builds, and publishing. These npm commands remain available for standalone use.
 
-```bash
-python sync_agent.py --once catalog --local
-```
+The portable build runs Vinext directly without a host `timeout` command. The managed-linux build uses `scripts/build-verified.sh` and its existing `SITES_BUILD_TIMEOUT` setting.
 
-Только цены и последующая публикация:
+## Learn More
 
-```bash
-python sync_agent.py --once prices --publish
-```
-
-## Защита и ограничения
-
-Telegram initData проверяется на сервере HMAC-SHA256 и сроком действия. Токен не передаётся браузеру. Страница доступна по HTTPS для открытия в Telegram; API требует проверенную подпись Telegram. Через обычный браузер показывается ссылка на бота, без доступа к каталогу. Кнопка Mini App в меню бота настроена и проверена через Telegram API.
-
-Серверные операции импорта защищены отдельным длинным секретом. Приватный Site дополнительно защищён Sites service bearer. Секреты находятся в окружении и .env, не в исходниках. Запросы обновления ограничены: одна активная задача и минутный лимит на пользователя.
-
-Для сайтов: robots.txt, запрет неизвестных доменов, пауза минимум 1 секунда, обработка timeout/502/503/504, отсутствие обхода 403/429. Полная синхронизация может занимать несколько минут: читать сотни страниц при каждом сравнении больше не нужно.
-
-Документированный официальный фид/API не подтверждён в проверенных источниках. HTML и ассортимент могут меняться. «Весь каталог» означает полностью обойдённые доступные публичные страницы и подтверждённые варианты новых Standard-телефонов. Скрытая JS-пагинация и неизвестные характеристики могут ограничивать охват; полнота не выдумывается.
-
-## Тесты
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-Тесты не требуют интернета. Проверяют точное сопоставление, SIM, цены, robots.txt, сетевые ошибки, хранение базы/курса, отсутствие сетевых запросов при чтении кеша и отличие обновления цен от полного обновления. В репозитории Site дополнительно проверяется подпись Telegram и TypeScript-сборка.
-
-## Работа с другого устройства
-
-Mini App доступен по HTTPS из Telegram. На компьютере, где запущен проект,
-должны одновременно работать бот и обработчик обновлений. Входящие порты,
-публичный IP и проброс портов не требуются: обработчик сам получает задания.
-
-Один раз заполните `.env`: `TELEGRAM_BOT_TOKEN`, `MINIAPP_URL`,
-`SYNC_WORKER_KEY` (должен совпадать с секретом сервера). Затем запустите
-`Start.command` на macOS либо `.venv/bin/python run.py` на Linux.
-Общий launcher перезапускает завершившиеся процессы и исключает двойной запуск.
-
-Для работы в фоне после входа в систему выполните на своём устройстве:
-`.venv/bin/python install_autostart.py`. Поддерживаются macOS LaunchAgent и
-Linux systemd user service. На Windows запустите `python run.py` через
-Планировщик заданий при входе. Компьютер должен оставаться включённым,
-подключённым к интернету и не спать. После выхода из учётной записи Linux
-user service требует отдельно настроенного linger, macOS LaunchAgent — входа
-пользователя. Установка службы не выполняется автоматически в среде разработки.
-
-Цены iPeople «Під замовлення» отображаются с отметкой «Под заказ».
-Они не считаются товарами в наличии. Jabko без переключателя состояния
-проверяется по совпадающей Product schema и обычной категории в BreadcrumbList;
-карточки б/у и неоднозначные варианты по-прежнему исключаются.
-
-## Общая база на Mac и ежечасные цены
-
-Mac — основной источник каталога: SQLite находится в `data/catalog.sqlite3`.
-Оставьте `Start.command` работающим в Terminal. Он запускает и бот, и worker.
-Все пользователи открывают https://t.me/Check_priceipeople_bot без установки
-Python. Worker получает общие задания и публикует обновлённый снимок через HTTPS.
-Mini App читает этот общий серверный снимок, а не подключается напрямую к SQLite;
-порты на Mac открывать не нужно. Персональным остаётся только курс пользователя.
-
-Раз в час серверная очередь автоматически создаёт задание обновления цен.
-Worker на Mac выполняет его и публикует результаты. Повторные и параллельные
-обходы исключены. Пропущенные часы после простоя не накапливаются. Кнопки
-обновления доступны и вручную. Для обнаружения новых моделей используйте
-«Обновить весь каталог».
-
-Mac должен оставаться включённым и подключённым к сети. На macOS Start.command
-использует caffeinate, чтобы не допускать автоматического сна во время работы.
-Закрытие крышки/выключение прерывают обновление. При отключении Mac пользователи
-видят последний сохранённый снимок с временем проверки; новых цен не появляется.
-Текущая среда разработки не заменяет запуск на вашем физическом Mac.
-
-## Последняя подтверждённая цена
-
-Неудачное обновление, HTTP 404 или исчезновение карточки больше не стирают цену.
-Сохраняются значение и `last_success_at` — время последнего подтверждения цены.
-Интерфейс показывает «Последняя подтверждённая цена» либо «Нет в наличии ·
-последняя цена» и дату. Такой товар не помечается как доступный для покупки.
-Новая карточка без единой подтверждённой цены остаётся без числа: цены не выдумываются.
-Полная перезагрузка каталога сохраняет историю пропавших карточек. Цена никогда
-не переносится на другую модель, память, SIM, цвет или состояние устройства.
-
-Glacier/Glacier Blue для 18 Pro и 18 Pro Max сопоставлены по артикулам магазинов:
-MJRT4 (18 Pro 256GB physical) и MJXW4 (18 Pro Max 512GB physical).
-Другие цвета и линейки автоматически этим правилом не объединяются.
-
-Если HTTP-карточка неполная и цена не подтверждена, выполняются до двух
-повторных загрузок с паузами 2 и 4 секунды. При сетевом timeout/connection error
-или временных HTTP 500/502/503/504 HTTP-клиент тоже ограничен двумя повторами.
-robots.txt, Crawl-delay, лимит запросов и общий срок обхода действуют на повторы.
-403, 429, 404, подтверждённое отсутствие товара и несовпадение варианта не
-вызывают повторную загрузку карточки. При исчерпании попыток сохраняется
-последняя подтверждённая цена и её дата. Новая попытка — при следующем обновлении.
-
-## Копирование карточки
-
-Кнопка «Копировать» сохраняет для каждого магазина только полное название с
-кодом товара и цену в гривнах/долларах по личному курсу. Ссылки, даты и статусы
-в текст не входят. Суммы совпадают с отображением карточки. При отсутствии
-курса требуется сначала его установить. Если магазин указывает несколько
-артикулов, сохраняются все. Названия/коды читаются из заголовка и совпадающей
-Product schema/активного swatch; не конструируются из URL. В Telegram WebView
-используется Clipboard API с резервным копированием через выделение текста.
-
-## Восстановление после сбоя публикации
-
-После завершения обхода worker атомарно сохраняет снимок и результат задания
-в `data/pending_publication.json`. Если сервер недоступен или не подтвердил
-завершение задания, worker повторяет отправку в следующем цикле и после
-перезапуска. Новый обход не начинается до успешной отправки. Не удаляйте этот
-файл вручную во время обновления. Повторная доставка использует тот же ID
-задания и сохранённый снимок. Локальный запуск `--once` работает как раньше.
-
-## Подготовка облачного запуска
-
-Добавлены Dockerfile и railway.json. DATA_DIR задаёт каталог постоянного
-хранилища. Подробные шаги и проверка при выключенном Mac — в CLOUD_SETUP.md.
-Конфигурация подготовлена, но размещение требует подключённого аккаунта
-хостинга: архив сам по себе не переносит процессы в облако.
-
-Копирование в Mini App теперь использует одну строку названия телефона и
-строки «сайт $… …грн» / «ябко $… …грн», без кодов, ссылок и дат.
+- [vinext Documentation](https://github.com/cloudflare/vinext)
+- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)

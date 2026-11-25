@@ -1,0 +1,31 @@
+'use client';
+import {useDeferredValue,useEffect,useMemo,useState} from 'react';
+import {Search,RefreshCw,ArrowUpRight,Copy,Check,SlidersHorizontal} from 'lucide-react';
+import {appleCategories,categoryLabels,categoryOf,groupedApple,type AppleCategory} from '../lib/apple-products';
+import {hasPrice,priceLabel,preferPrice,copyPrices,type Product} from '../lib/catalog';
+import {storeLabels} from '../lib/stores';
+import {formatPriceDate} from '../lib/time';
+const money=(n:number)=>new Intl.NumberFormat('ru-RU',{maximumFractionDigits:0}).format(n);
+type Props={products:Product[];stores:string[];rate:string|null;busy:boolean;loading:boolean;onRefresh:(kind:string,category:AppleCategory|'all')=>void};
+export function AppleBrowser({products,stores,rate,busy,loading,onRefresh}:Props){
+ const [category,setCategory]=useState<AppleCategory|'all'>('all'),[query,setQuery]=useState(''),[shop,setShop]=useState(''),[available,setAvailable]=useState(false),[sort,setSort]=useState('name'),[limit,setLimit]=useState(36),[copied,setCopied]=useState(''),[error,setError]=useState('');
+ const deferred=useDeferredValue(query);
+ const counts=useMemo(()=>Object.fromEntries(appleCategories.map(c=>[c,products.filter(p=>categoryOf(p)===c).length])),[products]);
+ const groups=useMemo(()=>{const result=groupedApple(products,category,deferred,shop,available);const lowest=(offers:Product[])=>Math.min(...offers.filter(hasPrice).map(p=>Number(p.price)),Infinity);return result.sort((a,b)=>sort==='price'?lowest(a.offers)-lowest(b.offers)||a.title.localeCompare(b.title):sort==='updated'?Math.max(...b.offers.map(p=>Date.parse(p.checked_at)||0))-Math.max(...a.offers.map(p=>Date.parse(p.checked_at)||0)):a.title.localeCompare(b.title,undefined,{numeric:true}));},[products,category,deferred,shop,available,sort]);
+ useEffect(()=>setLimit(36),[category,deferred,shop,available,sort]);
+ async function copy(key:string,offers:Product[]){try{await navigator.clipboard.writeText(copyPrices(offers,rate));setCopied(key);setTimeout(()=>setCopied(''),2000);}catch(e:any){setError(e.message||'Не удалось скопировать.');}}
+ return <section className="apple-browser">
+  <div className="apple-intro"><div><span className="tiny-label">APPLE · ОБЩИЙ КАТАЛОГ</span><h1>Найдите свою технику</h1><p>Название, артикул или комплектация — например, «MacBook M4 16 512».</p></div></div>
+  <label className="apple-search"><Search size={21}/><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="iPad Air, MacBook M4, AirPods, артикул…" aria-label="Поиск техники Apple"/>{query&&<button aria-label="Очистить поиск" onClick={()=>setQuery('')}>×</button>}</label>
+  <div className="apple-categories" role="group" aria-label="Категория техники"><button aria-pressed={category==='all'} onClick={()=>setCategory('all')}>Вся Apple <span>{products.length}</span></button>{appleCategories.map(c=><button key={c} aria-pressed={category===c} onClick={()=>setCategory(c)}>{categoryLabels[c]} <span>{counts[c]||0}</span></button>)}</div>
+  <div className="apple-filters"><label><SlidersHorizontal size={15}/><select aria-label="Магазин" value={shop} onChange={e=>setShop(e.target.value)}><option value="">Все магазины</option>{stores.map(s=><option key={s} value={s}>{storeLabels[s]}</option>)}</select></label><select aria-label="Сортировка" value={sort} onChange={e=>setSort(e.target.value)}><option value="name">По названию</option><option value="price">Сначала дешевле</option><option value="updated">Недавно проверенные</option></select><label className="apple-available"><input type="checkbox" checked={available} onChange={e=>setAvailable(e.target.checked)}/>В наличии / под заказ</label></div>
+  <div className="apple-results-bar"><span>Найдено: <strong>{groups.length}</strong>{query!==deferred?' · ищем…':''}</span><div><button disabled={busy} onClick={()=>onRefresh('prices',category)}><RefreshCw size={14}/>Обновить цены</button><button disabled={busy} onClick={()=>onRefresh('catalog',category)}>Загрузить {category==='all'?'всю Apple':categoryLabels[category]}</button></div></div>
+  {error&&<div className="error" role="alert">{error}<button onClick={()=>setError('')}>×</button></div>}
+  {loading?<div className="empty card">Загружаем общую базу…</div>:!groups.length?<div className="empty card"><Search size={25}/><h3>{query?'Ничего не найдено':'Категория ещё не загружена'}</h3><p>{query?'Попробуйте часть названия или артикул.':'Нажмите «Загрузить», чтобы проверить каталог магазинов и добавить товары.'}</p><button className="primary" disabled={busy} onClick={()=>onRefresh('catalog',category)}>Загрузить {category==='all'?'каталог Apple':categoryLabels[category]}</button></div>:<div className="apple-grid">{groups.slice(0,limit).map(group=>{
+   const offers=stores.flatMap(s=>{const matches=group.offers.filter(p=>p.store===s);const p=matches.reduce<Product|undefined>((best,p)=>preferPrice(p,best)?p:best,undefined);return p?[p]:[];});
+   const sku=offers[0]?.sku;
+   return <article className="card apple-product" key={group.key}><div className="apple-product-meta"><span>{categoryLabels[group.category]}</span>{sku&&<code>{sku}</code>}</div><h2>{group.title}</h2><div className="apple-offers">{offers.map(p=><div key={p.store+'|'+p.url} className="apple-offer"><div><a href={p.url} target="_blank" rel="noopener noreferrer">{storeLabels[p.store]} <ArrowUpRight size={12}/></a><small>{priceLabel(p)}</small></div><div className="apple-offer-price"><strong>{hasPrice(p)?money(Number(p.price))+' ₴':'—'}</strong>{hasPrice(p)&&rate&&<span>${money(Math.round(Number(p.price)/Number(rate)))}</span>}<small>{hasPrice(p)?formatPriceDate(p.last_success_at||p.checked_at):''}</small></div></div>)}</div><div className="apple-product-bottom"><span>{offers.length>1?'Одинаковая комплектация':'Отдельное предложение'}{group.category!=='iphone'?' · по артикулу':''}</span><button onClick={()=>void copy(group.key,offers)} aria-label="Скопировать товар и цены">{copied===group.key?<Check size={15}/>:<Copy size={15}/>}</button></div></article>;
+  })}</div>}
+  {groups.length>limit&&<button className="apple-more" onClick={()=>setLimit(n=>n+36)}>Показать ещё · осталось {groups.length-limit}</button>}
+ </section>;
+}

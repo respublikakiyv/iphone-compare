@@ -1,0 +1,3 @@
+import {internal,json,failure} from '../../../../lib/auth';
+import {botApi,webhookSecret} from '../../../../lib/telegram-bot';
+export async function POST(request:Request){try{internal(request);const origin=new URL(request.url).origin;await botApi('setChatMenuButton',{menu_button:{type:'web_app',text:'Открыть приложение',web_app:{url:origin}}});await botApi('setWebhook',{url:origin+'/api/telegram/webhook',secret_token:await webhookSecret(),allowed_updates:['message'],drop_pending_updates:false});const info=await botApi('getWebhookInfo',{});return json({ok:true,url:info.url,pending_update_count:info.pending_update_count,last_error_message:info.last_error_message||null});}catch(e){return failure(e);}}

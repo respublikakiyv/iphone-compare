@@ -1,0 +1,3 @@
+import {env} from 'cloudflare:workers';
+export async function webhookSecret(){const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('telegram-webhook:'+(env as any).SYNC_WORKER_KEY));return Array.from(new Uint8Array(bytes),b=>b.toString(16).padStart(2,'0')).join('');}
+export async function botApi(method:string,data:any){const token=(env as any).TELEGRAM_BOT_TOKEN;if(!token)throw new Error('Missing bot configuration');const r=await fetch('https://api.telegram.org/bot'+token+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(10000)});const body:any=await r.json();if(!r.ok||!body.ok)throw new Error('Telegram API '+r.status);return body.result;}

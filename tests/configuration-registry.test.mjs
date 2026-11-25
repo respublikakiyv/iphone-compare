@@ -1,0 +1,17 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {buildConfigurationRegistry,applyConfigurationRegistry,configurationRevision} from '../lib/configuration-registry.ts';
+import {hardwareFilters,hardwareRam,selectionModel} from '../lib/product-selection.ts';
+import {screenGlass} from '../lib/configuration-filters.ts';import {priceCardRows} from '../lib/comparison-view.ts';
+import {readRegistry,saveRegistry} from '../lib/registry-cache.ts';
+const p=(title,changes={})=>({category:'mac',model:title,full_title:title,sku:'MX123',storage:'1TB',price:'100000',store:'iPeople',url:'https://ipeople.ua/mac',color:'Silver',status:'ok',sim:'unknown',...changes});
+test('dictionary stores separate fields per article and enriches sparse offers without changing source prices or titles',()=>{
+ const a=p('MacBook Pro 16 M5 Pro 24GB RAM 1TB Silver Nano-texture 18 CPU 20 GPU'),b=p('Macbook Pro 16 1TB Silver',{store:'Jabko',url:'https://jabko.ua/mac',sku:'MX123UA/A',price:'99000'});const products=[Object.freeze(a),Object.freeze(b)],before=JSON.stringify(products),registry=buildConfigurationRegistry(products,'v1'),record=registry.records['mac|MX123'];assert.equal(record.fields.generation,'M5');assert.equal(record.fields.chipVariant,'Pro');assert.equal(record.fields.ram,'24GB');assert.equal(record.fields.storage,'1TB');assert.equal(record.fields.diagonal,'16');assert.equal(record.fields.glass,'nano');assert.equal(record.sources.length,2);assert.deepEqual(record.conflicts,[]);
+ const derived=applyConfigurationRegistry(products,registry);assert.equal(hardwareFilters(derived[1]).generation,'M5');assert.equal(hardwareRam(derived[1]),'24GB');assert.equal(screenGlass(derived[1]),'nano');assert.equal(selectionModel(derived[0]),selectionModel(derived[1]));assert.equal(priceCardRows(derived).length,1);assert.equal(derived[1].price,'99000');assert.equal(derived[1].full_title,b.full_title);assert.equal(JSON.stringify(products),before);assert.equal(applyConfigurationRegistry(products,null),products);
+});
+test('conflicting RAM or chip evidence keeps the entire article on the original matching path',()=>{
+ const products=[p('MacBook Pro 16 M5 Pro 24GB RAM 1TB'),p('MacBook Pro 16 M5 Pro 48GB RAM 1TB',{store:'Jabko'})],registry=buildConfigurationRegistry(products,'v1');assert.ok(registry.records['mac|MX123'].conflicts.includes('ram'));const derived=applyConfigurationRegistry(products,registry);assert.equal(derived[0],products[0]);assert.equal(derived[1],products[1]);assert.equal(priceCardRows(derived).length,2);
+});
+test('dictionary revision ignores price and progress changes but reacts to configuration changes',()=>{
+ const products=[p('MacBook Pro 16 M5 Pro 24GB RAM 1TB'),p('MacBook Air 13 M5 16GB RAM 1TB',{sku:'MX124',url:'https://ipeople.ua/air'})];const version=configurationRevision(products);assert.equal(configurationRevision([...products].reverse()),version);assert.equal(configurationRevision(products.map(p=>({...p,price:'123000',checked_at:'later',status:'unavailable'}))),version);assert.notEqual(configurationRevision([{...products[0],full_title:'MacBook Pro 16 M5 Max 48GB RAM 1TB'},products[1]]),version);
+});
+test('test dictionary cache is versioned and bounded when IndexedDB is unavailable',async()=>{for(const v of ['test-v1','test-v2','test-v3'])await saveRegistry(buildConfigurationRegistry([p('MacBook Pro M5 Pro')],v));assert.equal(await readRegistry('test-v1'),null);assert.equal((await readRegistry('test-v3')).catalogVersion,'test-v3');});
