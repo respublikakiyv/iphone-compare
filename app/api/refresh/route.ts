@@ -1,0 +1,3 @@
+import {visitor,json,failure} from '../../../lib/auth';
+import {enqueueRefresh,publicJob,sharedRate} from '../../../lib/cloud-refresh';
+export async function POST(request:Request){try{const user=await visitor(request);const text=await request.text();if(text.length>16000)return json({error:'Invalid request'},400);const {kind='prices',stores,scope='new',category='all',retryOnly=false,model='',targets,dueHours=0}=JSON.parse(text);const job=await enqueueRefresh(user,kind,stores,scope,category,retryOnly,model,targets,dueHours);if(targets===undefined)await sharedRate();return json({job:publicJob(job)});}catch(e){return failure(e);}}

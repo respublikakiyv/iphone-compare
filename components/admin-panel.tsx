@@ -1,0 +1,22 @@
+'use client';
+import {useState} from 'react';
+import {storeNames,type AppSettings} from '../lib/app-settings';
+import {hasPrice,type Product} from '../lib/catalog';
+import {formatKyivDate} from '../lib/time';
+export function AdminPanel({settings,isOwner,ownerConfigured,products,storeStates,api,onSettings,onClose,onRecheck}:{settings:AppSettings;isOwner:boolean;ownerConfigured:boolean;products:Product[];storeStates:Record<string,any>;api:(path:string,body?:any)=>Promise<any>;onSettings:(v:any)=>void;onClose:()=>void;onRecheck:(p:Product)=>Promise<void>}){
+ const [draft,setDraft]=useState(settings),[code,setCode]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[filter,setFilter]=useState('all');
+ const problems=products.filter(p=>(p.status==='error'||!hasPrice(p)||p.sim==='unknown'||p.metadata_notice)&&(filter==='all'||p.store===filter));
+ async function save(){setBusy(true);setMessage('');try{const r=await api(isOwner?'/api/admin/settings':'/api/admin/claim',isOwner?draft:{code});onSettings(r);setCode('');setDraft(r.settings);setMessage('Сохранено.');}catch(e:any){setMessage(e.message);}finally{setBusy(false);}}
+ return <section className="admin-panel card"><div className="section-heading"><h2>{isOwner?'Панель владельца':'Доступ владельца'}</h2><button onClick={onClose}>Закрыть</button></div>{!isOwner?<>{ownerConfigured?<p>Доступ доступен только Telegram-аккаунту владельца.</p>:<><p>Введите одноразовый код из нашего чата. Доступ закрепится за вашим Telegram-аккаунтом.</p><label>Код владельца<input type="password" autoComplete="off" value={code} onChange={e=>setCode(e.target.value)}/></label><button className="primary" disabled={busy||!code} onClick={save}>Активировать доступ</button></>}</>:<>
+ <p>Настройки общие для всех пользователей. Каталог и личный курс остаются на каждом устройстве.</p>
+ <fieldset><legend>Магазины сравнения</legend>{storeNames.map(store=><label className="admin-check" key={store}><input type="checkbox" checked={draft.stores.includes(store)} onChange={e=>setDraft({...draft,stores:e.target.checked?[...draft.stores,store]:draft.stores.filter(s=>s!==store)})}/>{store}</label>)}</fieldset>
+ <label>Получатель «Отправить шефу»<input value={draft.bossRecipient} onChange={e=>setDraft({...draft,bossRecipient:e.target.value.replace(/^@/,'')})}/></label>
+ <label>Напоминать об обновлении через, часов<input type="number" min="1" max="48" value={draft.staleHours} onChange={e=>setDraft({...draft,staleHours:Number(e.target.value)})}/></label>
+ <label>Курс по умолчанию для новых устройств<input inputMode="decimal" placeholder="Не задан" value={draft.defaultRate||''} onChange={e=>setDraft({...draft,defaultRate:e.target.value||null})}/></label>
+ <label className="admin-check"><input type="checkbox" checked={draft.showUsed} onChange={e=>setDraft({...draft,showUsed:e.target.checked})}/>Показывать раздел Б/У</label>
+ <button className="primary" disabled={busy} onClick={save}>{busy?'Сохраняем…':'Сохранить настройки'}</button><small>Версия настроек: {settings.revision}</small>
+ <h3>Диагностика базы на этом устройстве</h3>{storeNames.map(store=>{const rows=products.filter(p=>p.store===store);return <div className="admin-store" key={store}><strong>{store}</strong><span>{rows.length} карточек · {rows.filter(hasPrice).length} с ценой</span><small>{storeStates[store]?.message||'Не обновлялся'} · {formatKyivDate(storeStates[store]?.prices_updated_at)||'Нет завершённой проверки'}</small></div>;})}
+ <label>Проблемные карточки<select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">Все магазины</option>{storeNames.map(s=><option key={s}>{s}</option>)}</select></label><p>{problems.length} требуют внимания. «SIM не указана» означает, что магазин не сообщил тип SIM; цена сохранена отдельно.</p>
+ <div className="admin-issues">{problems.slice(0,100).map(p=><div key={p.store+p.url}><a href={p.url} target="_blank" rel="noopener noreferrer">{p.store} · {p.full_title||`iPhone ${p.model} ${p.storage} ${p.color}`}</a><small>{!hasPrice(p)?'Нет подтверждённой цены':p.status==='error'?'Не удалось обновить':'SIM не указана'} · {p.sku}{p.metadata_notice&&' · '+p.metadata_notice}</small><button disabled={busy} onClick={async()=>{setBusy(true);try{await onRecheck(p);setMessage('Карточка проверена.');}catch(e:any){setMessage(e.message);}finally{setBusy(false);}}}>Проверить карточку</button></div>)}</div>
+ </>}{message&&<p role="status">{message}</p>}</section>;
+}

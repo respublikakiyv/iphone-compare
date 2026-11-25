@@ -1,0 +1,29 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';
+import {parsePage} from '../lib/store-parser.ts';
+import {migrateDevice,refreshDevice} from '../lib/device-catalog.ts';
+import {currentModel,belongs} from '../lib/inventory.ts';
+import {copyPrices} from '../lib/catalog.ts';
+const html=fs.readFileSync(new URL('./fixtures/ipeople_used.html',import.meta.url),'utf8');
+const url='https://ipeople.ua/products/b-u-smartfon-apple-iphone-15-pro-max-256gb-blue-titanium-mu7a3-ua';
+const used=parsePage('iPeople',html,url,'used').record;
+const fresh={...used,url:'https://ipeople.ua/new-17',model:'17',edition:'Standard'};
+test('expanded Apple inventory retains older iPhone generations',()=>{for(const m of ['16 Pro Max','16e','15','13','SE 2022'])assert.equal(currentModel(m),true);for(const m of ['17','17e','17 Air','18 Pro Max','Duo'])assert.equal(currentModel(m),true);const s=migrateDevice({catalog:{products:[fresh,{...fresh,model:'16'},used],stores:{}},rate:'45',job:null});assert.deepEqual(s.catalog.products.map(p=>p.edition),['Standard','Standard','Used']);assert.equal(s.rate,'45');});
+test('used price confirmed from live iPeople fixture, with hidden physical SIM',()=>{assert.equal(used.edition,'Used');assert.equal(used.store,'iPeople');assert.equal(used.sim,'physical');assert.equal(used.model,'15 Pro Max');assert.equal(used.price,'36240');assert.equal(used.status,'ok');assert.equal(parsePage('iPeople',html,url,'new').record,null);});
+test('used cannot include eSIM, unknown SIM, new phones or Jabko',()=>{assert.equal(parsePage('iPeople',html.replaceAll('Nano-SIM + eSIM','eSIM'),url,'used').record,null);assert.equal(parsePage('iPeople',html.replaceAll('Nano-SIM + eSIM','unknown'),url,'used').record,null);assert.equal(parsePage('iPeople',html.replaceAll('Б/У','Новий'),url,'used').record,null);assert.equal(belongs({...used,store:'Jabko'},'used'),false);assert.equal(belongs({...used,sim:'esim'},'used'),false);});
+test('used price refresh visits only iPeople used URLs and preserves new rows',async()=>{const calls=[];const result=await refreshDevice('prices',{products:[fresh,used],stores:{}},async(store,u)=>{calls.push([store,u]);return {record:{...used,price:'36000'},variants:[]};},()=>{},new AbortController().signal,'used');assert.deepEqual(calls,[['iPeople',url]]);assert.equal(result.catalog.products.find(p=>p.edition==='Standard').price,fresh.price);assert.equal(result.catalog.products.find(p=>p.edition==='Used').price,'36000');});
+test('full used crawl uses separate catalog and never requests Jabko',async()=>{const calls=[];const result=await refreshDevice('catalog',{products:[fresh],stores:{}},async(store,u)=>{calls.push([store,u]);return u.includes('/b-u-tekhnyka-ua/')?{catalogPage:true,urls:[url],next:null}:{record:used,variants:[]};},()=>{},new AbortController().signal,'used');assert.equal(calls[0][1],'https://ipeople.ua/b-u-tekhnyka-ua/b-u-iphone-ua');assert.ok(calls.every(([s])=>s==='iPeople'));assert.equal(result.catalog.products.length,2);});
+test('copy identifies used phone and never combines new and used',()=>{assert.equal(copyPrices([used],'45'),'Б/У iPhone 15 pro Max 256 GB Blue Titanium\nсайт $805 36240грн');assert.throws(()=>copyPrices([used,{...used,edition:'Standard'}],'45'),/конфигурацию/);});
+test('used discovery excludes eSIM titles and new stock',()=>{const page='<a class="sc-module-title" href="/u">Б/У iPhone 17 256GB Black</a><a class="sc-module-title" href="/e">Б/У iPhone 17 256GB eSIM Black</a><a class="sc-module-title" href="/n">iPhone 17 256GB Black</a><a class="sc-module-title" href="/old">iPhone 16 256GB Black</a>';assert.deepEqual(parsePage('iPeople',page,'https://ipeople.ua/','used').urls,['https://ipeople.ua/u']);assert.deepEqual(parsePage('iPeople',page,'https://ipeople.ua/','new').urls,['https://ipeople.ua/n','https://ipeople.ua/old']);});
+
+test('used catalog discovers older model branches and every next page',()=>{const root='https://ipeople.ua/b-u-tekhnyka-ua/b-u-iphone-ua',html='<a href="'+root+'/b-u-iphone-13-pro-max-ua">iPhone 13 Pro Max</a><a href="'+root+'/b-u-iphone-se-2022-ua">iPhone SE 2022</a><a class="sc-module-title" href="/products/used13">Б/У iPhone 13 128GB Midnight</a><div class="pagination"><a href="'+root+'/?page=2">2</a></div>';const page=parsePage('iPeople',html,root,'used');assert.equal(page.categories.length,2);assert.equal(page.next,root+'/?page=2');assert.deepEqual(page.urls,['https://ipeople.ua/products/used13']);});
+
+test('used Air is an eSIM exception; other used eSIM models remain excluded',()=>{
+ const html=fs.readFileSync(new URL('./fixtures/ipeople_used_air.html',import.meta.url),'utf8'),url='https://ipeople.ua/products/b-u-smartfon-apple-iphone-17-air-256gb-gold';
+ const air=parsePage('iPeople',html,url,'used',{discovery:false});assert.equal(air.ignored,false);assert.equal(air.record.model,'17 Air');assert.equal(air.record.sim,'esim');assert.equal(air.record.color,'Light Gold');assert.equal(air.record.price,'39776');assert.equal(belongs(air.record,'used'),true);
+ assert.equal(belongs({...air.record,model:'17'},'used'),false);assert.equal(belongs({...air.record,sim:'physical'},'used'),false);
+ assert.equal(parsePage('iPeople',html.replace('Тип SIM-карти','Тип SIM-карти').replace('>eSIM<','>Nano-SIM + eSIM<'),url,'used').record,null);
+});
+test('used discovery includes Air with or without an eSIM suffix, excludes other eSIM',()=>{
+ const html='<a class="sc-module-title" href="/air">Б/У iPhone 17 Air 256GB Light Gold</a><a class="sc-module-title" href="/air512">Б/У iPhone 17 Air 512GB eSIM Space Black</a><a class="sc-module-title" href="/other">Б/У iPhone 17 Pro 256GB eSIM Orange</a>';
+ assert.deepEqual(parsePage('iPeople',html,'https://ipeople.ua/','used').urls,['https://ipeople.ua/air','https://ipeople.ua/air512']);
+});

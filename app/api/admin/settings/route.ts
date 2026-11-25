@@ -1,0 +1,4 @@
+import {identity,json,failure} from '../../../../lib/auth';
+import {requireOwner,publicSettings,saveSettings} from '../../../../lib/admin';
+export async function GET(request:Request){try{return json({settings:publicSettings(await requireOwner(await identity(request)))});}catch(e:any){return e.message==='Forbidden'?json({error:'Нет доступа'},403):failure(e);}}
+export async function POST(request:Request){try{const user=await identity(request);await requireOwner(user);const text=await request.text();if(text.length>4000)return json({error:'Request too large'},413);return json({settings:await saveSettings(user,JSON.parse(text))});}catch(e:any){if(e.message==='Forbidden')return json({error:'Нет доступа'},403);if(e.message.includes('Telegram'))return failure(e);return json({error:e.message},400);}}

@@ -1,0 +1,36 @@
+[
+  {
+    "store": "Jabko",
+    "url": "https://jabko.ua/product/macbook-air-15-retina-sky-blue-512gb-10-cpu--10-gpu-16gb-ram-with-apple-m5-2026",
+    "category": "mac",
+    "variant_key": "mac|sku:MDVQ4|512GB,16GB|M5|||CPU10,GPU10||",
+    "model": "MacBook Air 15 Retina, Sky Blue, 512GB, 10 CPU / 10 GPU, 16GB RAM with Apple M5 (2026)",
+    "storage": "512GB",
+    "sim": "unknown",
+    "color": "Sky Blue",
+    "edition": "Standard",
+    "sku": "MDVQ4",
+    "full_title": "MacBook Air 15 Retina, Sky Blue, 512GB, 10 CPU / 10 GPU, 16GB RAM with Apple M5 (2026) (MDVQ4)",
+    "price": "82599",
+    "status": "ok",
+    "checked_at": "2026-10-16T16:32:13.395Z",
+    "last_success_at": "2026-10-16T16:32:13.395Z"
+  },
+  {
+    "store": "iPeople",
+    "url": "https://ipeople.ua/products/noutbuk-apple-macbook-air-15-2026-apple-m5-10-core-gpu-16gb-512gb-sky-blue-mdvq4",
+    "category": "mac",
+    "variant_key": "mac|sku:MDVQ4|512GB,16GB|M5|||||",
+    "model": "MacBook Air 15\" 2026 Apple M5 10 core GPU 16GB 512GB Sky Blue",
+    "storage": "512GB",
+    "sim": "unknown",
+    "color": "Sky Blue",
+    "edition": "Standard",
+    "sku": "MDVQ4",
+    "full_title": "Ноутбук Apple MacBook Air 15\" 2026 Apple M5 10 core GPU 16GB 512GB Sky Blue (MDVQ4)",
+    "price": "84999",
+    "status": "ok",
+    "checked_at": "2026-10-16T16:45:37.434Z",
+    "last_success_at": "2026-10-16T16:45:37.434Z"
+  }
+]
