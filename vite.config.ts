@@ -12,6 +12,14 @@ const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
 // infrastructure details in the repository.
 const d1DatabaseId =
   process.env.D1_DATABASE_ID || SITE_CREATOR_PLACEHOLDER_DATABASE_ID;
+// The Cloudflare Git build receives deployment credentials as build secrets.
+// Pass only the explicit runtime bindings through to Wrangler; the values stay
+// in Cloudflare and are never written to this repository.
+const workerRuntimeVars = Object.fromEntries(
+  ["TELEGRAM_BOT_TOKEN", "SYNC_WORKER_KEY"]
+    .filter((key) => Boolean(process.env[key]))
+    .map((key) => [key, process.env[key]!]),
+);
 
 const { d1, r2 } = hostingConfig;
 
@@ -74,6 +82,7 @@ export default defineConfig(async ({ command }) => {
         inspectorPort: false,
         config: {
           ...localBindingConfig,
+          vars: workerRuntimeVars,
           ...(command === "serve"
             ? {
                 services: [
