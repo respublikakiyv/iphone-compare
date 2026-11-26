@@ -179,7 +179,10 @@ export async function runRefreshStep(options:{read?:ReadPage;budgetMs?:number}={
   }
   for(const source of job.sources)if(source.bulkPrices)source.queue=source.queue.filter(item=>item.type!=='page'||!!rootCategory(source.store,item.url));
   const read:ReadPage=options.read|| (async(store,url,scope,parseOptions)=>parsePage(store,await storePage(store,url),url,scope,parseOptions));
-  const deadline=Date.now()+(options.budgetMs??12000);
+  // Cloudflare's free Workers CPU allowance is intentionally small. Keep every
+  // continuation short; the browser schedules the next step and the durable
+  // checkpoint makes progress without losing a partially scanned catalog.
+  const deadline=Date.now()+(options.budgetMs??1200);
   // Each host advances independently: a slow shop never holds up another one.
   // Reserve each request before awaiting quota, keeping concurrent lanes bounded.
   let exhausted=false;
