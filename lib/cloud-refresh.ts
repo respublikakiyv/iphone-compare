@@ -123,6 +123,12 @@ export async function advanceSource(source:Source,catalog:Catalog,read:ReadPage)
   if(!source.seen.includes(key))source.seen.push(key);
  }catch(e:any){
   const reason=e.message||'network_error',blocked=['http_403','http_429','robots_denied','source_challenge','crawl_delay_too_long'].includes(reason);
+  if(reason==='crawl_busy'){
+   // Respect the persisted per-store slot without spending Worker CPU sleeping.
+   source.queue.unshift({...item,attempts:item.attempts});
+   source.retryAt=Date.now()+Math.max(1000,Number(e.retryAfter||1)*1000);
+   return;
+  }
   if(reason==='source_challenge'){
    source.blockedStreak=(source.blockedStreak||0)+1;
    if(source.blockedStreak<3&&item.attempts<2){source.queue.push({...item,attempts:item.attempts+1});source.retryAt=Date.now()+30000;return;}
@@ -182,7 +188,7 @@ export async function runRefreshStep(options:{read?:ReadPage;budgetMs?:number}={
   // Cloudflare's free Workers CPU allowance is intentionally small. Keep every
   // continuation short; the browser schedules the next step and the durable
   // checkpoint makes progress without losing a partially scanned catalog.
-  const deadline=Date.now()+(options.budgetMs??1200);
+  const deadline=Date.now()+(options.budgetMs??350);
   // Each host advances independently: a slow shop never holds up another one.
   // Reserve each request before awaiting quota, keeping concurrent lanes bounded.
   let exhausted=false;
