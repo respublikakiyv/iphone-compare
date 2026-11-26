@@ -154,6 +154,16 @@ export async function runRefreshStep(options:{read?:ReadPage;budgetMs?:number}={
  if(!lock.meta.changes)return {job:publicJob(await cloudJob()),busy:true};
  try{
   const job=await cloudJob();if(!job)return {job:null};
+  // A source challenge must never leave the whole catalog waiting for a human
+  // click. Requeue deferred retailer URLs when their persisted cooldown ends.
+  for(const source of job.sources)if(source.complete&&source.deferredQueue?.length&&(source.retryAt||0)<=Date.now()){
+   source.queue=source.deferredQueue.map(item=>({...item,attempts:0}));
+   delete source.deferredQueue;
+   source.complete=false;
+   source.retryAt=0;
+   source.blockedStreak=0;
+   source.error=null;
+  }
   const pending=await d.prepare('SELECT id,payload FROM cloud_refresh WHERE id LIKE ?').bind('pending:'+job.id+':%').all<{id:string;payload:string}>();
   const catalog=await cloudCatalog();const beforeProducts=[...catalog.products],openProducts=catalog.products.filter(p=>!!p.stock_id);catalog.products=catalog.products.filter(p=>!p.stock_id);let repairedBlocked=false;
   // Earlier versions marked an entire stopped price queue as failed. Its unchanged
