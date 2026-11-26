@@ -1,9 +1,15 @@
 import {runWithBackground} from "../lib/background";
 import handler from "vinext/server/fetch-handler";
 import { runWithConnectorBinding } from "../lib/connector-context";
+import { runRefreshStep } from "../lib/cloud-refresh";
 import type { ConnectorBinding } from "../lib/connector-contract.mjs";
 
 export default {
+  // Continue price discovery even when nobody has the Telegram Mini App open.
+  // Each run owns a tiny, durable checkpointed slice of the queue.
+  scheduled(_event: ScheduledEvent, _env: Cloudflare.Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runRefreshStep({ budgetMs: 300 }).then(() => undefined, () => undefined));
+  },
   fetch(request: Request, env: Cloudflare.Env, ctx: ExecutionContext<{ CONNECTORS?: ConnectorBinding }>) {
     let binding = ctx.props?.CONNECTORS;
     // Local preview emulates the same request-scoped capability. This branch and
